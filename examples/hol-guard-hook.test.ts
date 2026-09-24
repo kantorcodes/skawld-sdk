@@ -108,6 +108,37 @@ describe("HOL Guard PreToolUse example", () => {
     });
   });
 
+  test("fails closed on a wrong event or missing authority fields", async () => {
+    const wrongEvent = createHolGuardPreToolHook(async () =>
+      JSON.stringify({
+        policy_action: "allow",
+        reason_code: "native_policy_allow",
+        hookSpecificOutput: {
+          hookEventName: "PostToolUse",
+          permissionDecision: "allow",
+        },
+      }),
+    );
+    const missingReasonCode = createHolGuardPreToolHook(async () =>
+      JSON.stringify({
+        policy_action: "allow",
+        hookSpecificOutput: {
+          hookEventName: "PreToolUse",
+          permissionDecision: "allow",
+        },
+      }),
+    );
+
+    expect(await wrongEvent(input(), ctx())).toEqual({
+      action: "deny",
+      reason: "HOL Guard: unexpected hook response event",
+    });
+    expect(await missingReasonCode(input(), ctx())).toEqual({
+      action: "deny",
+      reason: "HOL Guard: hook response has no reason code",
+    });
+  });
+
   test("fails closed when Bash input has no command", async () => {
     const hook = createHolGuardPreToolHook(async () => {
       throw new Error("runner should not be called");

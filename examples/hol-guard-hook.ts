@@ -150,11 +150,15 @@ function runHolGuard(payload: string, signal: AbortSignal): Promise<string> {
     );
 
     timer.unref?.();
+    if (signal.aborted) {
+      onAbort();
+      return;
+    }
     signal.addEventListener("abort", onAbort, { once: true });
-    child.stdout.on("data", (chunk: Buffer) => {
+    child.stdout!.on("data", (chunk: Buffer) => {
       stdout += chunk.toString("utf8");
     });
-    child.stderr.on("data", (chunk: Buffer) => {
+    child.stderr!.on("data", (chunk: Buffer) => {
       stderr += chunk.toString("utf8");
     });
     child.once("error", (error) => fail(error));
@@ -165,8 +169,8 @@ function runHolGuard(payload: string, signal: AbortSignal): Promise<string> {
       }
       fail(new Error(stderr.trim() || `hook process exited with code ${code ?? "unknown"}`));
     });
-    child.stdin.on("error", (error) => fail(error));
-    child.stdin.end(payload);
+    child.stdin!.on("error", (error) => fail(error));
+    child.stdin!.end(payload);
   });
 }
 
