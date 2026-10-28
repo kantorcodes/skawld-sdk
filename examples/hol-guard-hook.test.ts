@@ -38,6 +38,28 @@ describe("HOL Guard PreToolUse example", () => {
     });
   });
 
+  test("never continues on an unavailable or contradictory allow-shaped result", async () => {
+    for (const stop of [
+      { continue: false },
+      { continue: "false" },
+      { decision: "deny" },
+      { decision: "review" },
+      { decision: 0 },
+      { reason_code: "native_hook_worker_unavailable" },
+    ]) {
+      const hook = createHolGuardPreToolHook(async () => JSON.stringify({
+        policy_action: "allow",
+        reason_code: "native_policy_allow",
+        hookSpecificOutput: {
+          hookEventName: "PreToolUse",
+          permissionDecision: "allow",
+        },
+        ...stop,
+      }));
+      expect((await hook(input(), ctx()))?.action).toBe("deny");
+    }
+  });
+
   test("preserves a Guard review as ask", async () => {
     const hook = createHolGuardPreToolHook(async () =>
       JSON.stringify({
