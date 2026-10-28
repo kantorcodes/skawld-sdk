@@ -53,7 +53,7 @@ export function createHolGuardPreToolHook(
 
     const decision = response.hookSpecificOutput.permissionDecision;
     const reasonCode = response.reason_code.trim();
-    const topDecision = response.decision?.trim().toLowerCase();
+    const topDecision = typeof response.decision === "string" ? response.decision.trim().toLowerCase() : undefined;
     const continuationStopped = Object.prototype.hasOwnProperty.call(response, "continue") && response.continue !== true;
     const conflictingDecision = Object.prototype.hasOwnProperty.call(response, "decision") &&
       (typeof response.decision !== "string" || (topDecision !== "allow" && topDecision !== "review"));
