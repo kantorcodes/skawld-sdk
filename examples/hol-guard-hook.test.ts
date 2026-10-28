@@ -149,6 +149,24 @@ describe("HOL Guard PreToolUse example", () => {
     });
   });
 
+  test("denies non-string optional reason fields without throwing", async () => {
+    const hook = createHolGuardPreToolHook(async () => JSON.stringify({
+      policy_action: "block",
+      reason_code: "policy_block",
+      reason: 99,
+      systemMessage: { text: "not a string" },
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision: "deny",
+        permissionDecisionReason: ["unexpected"],
+      },
+    }));
+    expect(await hook(input(), ctx())).toEqual({
+      action: "deny",
+      reason: "HOL Guard: policy action block returned deny",
+    });
+  });
+
   test("fails closed on a wrong event or missing authority fields", async () => {
     const wrongEvent = createHolGuardPreToolHook(async () =>
       JSON.stringify({
