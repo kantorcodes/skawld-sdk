@@ -60,6 +60,25 @@ describe("HOL Guard PreToolUse example", () => {
     }
   });
 
+  test("requires a positive native-exact reason for execution", async () => {
+    for (const [reasonCode, expectedAction] of [
+      ["native_exact_safe_command", "continue"],
+      ["native_exact_introspection_command", "continue"],
+      ["native_exact_review_required", "deny"],
+      ["native_exact_worker_unavailable", "deny"],
+    ] as const) {
+      const hook = createHolGuardPreToolHook(async () => JSON.stringify({
+        policy_action: "allow",
+        reason_code: reasonCode,
+        hookSpecificOutput: {
+          hookEventName: "PreToolUse",
+          permissionDecision: "allow",
+        },
+      }));
+      expect((await hook(input(), ctx()))?.action).toBe(expectedAction);
+    }
+  });
+
   test("preserves a Guard review as ask", async () => {
     const hook = createHolGuardPreToolHook(async () =>
       JSON.stringify({
