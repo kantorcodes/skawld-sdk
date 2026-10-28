@@ -207,4 +207,15 @@ describe("HOL Guard PreToolUse example", () => {
       reason: "HOL Guard: Bash command is missing",
     });
   });
+  test("denies an already-aborted request before launching Guard", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const hook = createHolGuardPreToolHook();
+    const result = await hook(input(), { ...ctx(), signal: controller.signal });
+    expect(result).toEqual({
+      action: "deny",
+      reason: "HOL Guard: hook request aborted",
+    });
+  });
+
 });
