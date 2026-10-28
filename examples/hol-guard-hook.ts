@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { isAbsolute } from "node:path";
 import type { PreToolUseHook } from "../src/sdk.js";
 
 const GUARD_TIMEOUT_MS = 9_000;
@@ -41,12 +42,17 @@ export function createHolGuardPreToolHook(
       return { action: "deny", reason: "HOL Guard: Bash command is missing" };
     }
 
+    if (typeof ctx?.cwd !== "string" || !isAbsolute(ctx.cwd)) {
+      return { action: "deny", reason: "HOL Guard: invalid hook working directory" };
+    }
+
     let response: GuardHookResponse;
     try {
       const payload = JSON.stringify({
         hook_event_name: "PreToolUse",
         tool_name: "Bash",
         tool_input: { command },
+        cwd: ctx.cwd,
       });
       response = parseGuardResponse(await run(payload, ctx.signal));
     } catch (error) {
