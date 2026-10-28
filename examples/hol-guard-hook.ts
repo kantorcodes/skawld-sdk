@@ -35,7 +35,8 @@ export function createHolGuardPreToolHook(
   return async (input, ctx) => {
     if (input.tool_name !== "Bash") return;
 
-    const command = input.input.command;
+    // Even a malformed Bash envelope must deny rather than throw from the hook.
+    const command = input.input?.command;
     if (typeof command !== "string" || command.trim() === "") {
       return { action: "deny", reason: "HOL Guard: Bash command is missing" };
     }
