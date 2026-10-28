@@ -59,7 +59,9 @@ export function createHolGuardPreToolHook(
     const continuationStopped = Object.prototype.hasOwnProperty.call(response, "continue") && response.continue !== true;
     const conflictingDecision = Object.prototype.hasOwnProperty.call(response, "decision") &&
       (typeof response.decision !== "string" || (topDecision !== "allow" && topDecision !== "review"));
-    const allowReason = reasonCode.startsWith("native_exact_") ||
+    // A native-exact error or review code is not itself permission to execute.
+    const allowReason = reasonCode.startsWith("native_exact_safe_") ||
+      reasonCode === "native_exact_introspection_command" ||
       reasonCode === "native_policy_allow" ||
       reasonCode === "native_custom_mcp_tool_allow";
 
