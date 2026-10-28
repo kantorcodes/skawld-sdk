@@ -161,6 +161,17 @@ describe("HOL Guard PreToolUse example", () => {
     });
   });
 
+  test("denies a malformed Bash envelope instead of throwing", async () => {
+    const hook = createHolGuardPreToolHook(async () => {
+      throw new Error("Guard must not run for missing input");
+    });
+    const missingInput = { ...input(), input: undefined } as unknown as Parameters<typeof hook>[0];
+    const nullInput = { ...input(), input: null } as unknown as Parameters<typeof hook>[0];
+    const expected = { action: "deny", reason: "HOL Guard: Bash command is missing" };
+    expect(await hook(missingInput, ctx())).toEqual(expected);
+    expect(await hook(nullInput, ctx())).toEqual(expected);
+  });
+
   test("fails closed when Bash input has no command", async () => {
     const hook = createHolGuardPreToolHook(async () => {
       throw new Error("runner should not be called");
