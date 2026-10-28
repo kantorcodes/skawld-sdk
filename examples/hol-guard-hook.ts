@@ -86,13 +86,20 @@ export function createHolGuardPreToolHook(
       return { action: "ask" };
     }
 
+    // The JSON parser accepts optional human-readable fields from untrusted
+    // Guard output. Never call string methods on unchecked values: a thrown
+    // hook error could be treated as abstention by the host.
     const reason =
-      response.hookSpecificOutput.permissionDecisionReason?.trim() ||
-      response.reason?.trim() ||
-      response.systemMessage?.trim() ||
+      safeReason(response.hookSpecificOutput.permissionDecisionReason) ||
+      safeReason(response.reason) ||
+      safeReason(response.systemMessage) ||
       `policy action ${response.policy_action} returned ${decision}`;
     return { action: "deny", reason: `HOL Guard: ${reason}` };
   };
+}
+
+function safeReason(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
 }
 
 function parseGuardResponse(raw: string): GuardHookResponse {
