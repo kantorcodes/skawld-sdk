@@ -136,6 +136,12 @@ function parseGuardResponse(raw: string): GuardHookResponse {
 
 function runHolGuard(payload: string, signal: AbortSignal): Promise<string> {
   return new Promise((resolve, reject) => {
+    // Do not spawn after cancellation: an immediate return before attaching the
+    // child error listener can otherwise crash the host on ENOENT.
+    if (signal.aborted) {
+      reject(new Error("hook request aborted"));
+      return;
+    }
     const child = spawn(
       "hol-guard",
       ["hook", "--harness", "claude-code", "--json"],
