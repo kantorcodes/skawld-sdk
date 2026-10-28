@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import type { PreToolUseHook } from "../src/sdk.js";
 
 const GUARD_TIMEOUT_MS = 9_000;
+const MAX_GUARD_OUTPUT_BYTES = 64 * 1024;
 
 type GuardRunner = (payload: string, signal: AbortSignal) => Promise<string>;
 
@@ -92,6 +93,9 @@ export function createHolGuardPreToolHook(
 }
 
 function parseGuardResponse(raw: string): GuardHookResponse {
+  if (Buffer.byteLength(raw, "utf8") > MAX_GUARD_OUTPUT_BYTES) {
+    throw new Error("hook response exceeds 64 KiB");
+  }
   const text = raw.trim();
   if (text === "") throw new Error("empty hook response");
 
@@ -172,10 +176,18 @@ function runHolGuard(payload: string, signal: AbortSignal): Promise<string> {
     }
     signal.addEventListener("abort", onAbort, { once: true });
     child.stdout!.on("data", (chunk: Buffer) => {
+      if (settled) return;
       stdout += chunk.toString("utf8");
+      if (Buffer.byteLength(stdout, "utf8") > MAX_GUARD_OUTPUT_BYTES) {
+        stop("hook stdout exceeds 64 KiB");
+      }
     });
     child.stderr!.on("data", (chunk: Buffer) => {
+      if (settled) return;
       stderr += chunk.toString("utf8");
+      if (Buffer.byteLength(stderr, "utf8") > MAX_GUARD_OUTPUT_BYTES) {
+        stop("hook stderr exceeds 64 KiB");
+      }
     });
     child.once("error", (error) => fail(error));
     child.once("close", (code) => {
