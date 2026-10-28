@@ -6,6 +6,8 @@ const GUARD_TIMEOUT_MS = 9_000;
 type GuardRunner = (payload: string, signal: AbortSignal) => Promise<string>;
 
 interface GuardHookResponse {
+  continue?: boolean;
+  decision?: string;
   policy_action: string;
   reason_code: string;
   reason?: string;
@@ -50,10 +52,24 @@ export function createHolGuardPreToolHook(
     }
 
     const decision = response.hookSpecificOutput.permissionDecision;
+    const reasonCode = response.reason_code.trim();
+    const topDecision = response.decision?.trim().toLowerCase();
+    const continuationStopped = Object.prototype.hasOwnProperty.call(response, "continue") && response.continue !== true;
+    const conflictingDecision = Object.prototype.hasOwnProperty.call(response, "decision") &&
+      (typeof response.decision !== "string" || (topDecision !== "allow" && topDecision !== "review"));
+    const allowReason = reasonCode.startsWith("native_exact_") ||
+      reasonCode === "native_policy_allow" ||
+      reasonCode === "native_custom_mcp_tool_allow";
+
+    if (continuationStopped || conflictingDecision ||
+        (topDecision === "review" && decision === "allow")) {
+      return { action: "deny", reason: "HOL Guard explicitly stopped or returned an invalid verdict" };
+    }
+
     if (
       decision === "allow" &&
       response.policy_action === "allow" &&
-      response.reason_code.trim() !== ""
+      allowReason
     ) {
       return { action: "continue" };
     }
