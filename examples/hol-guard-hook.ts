@@ -5,7 +5,7 @@ import type { PreToolUseHook } from "../src/sdk.js";
 const GUARD_TIMEOUT_MS = 9_000;
 const MAX_GUARD_OUTPUT_BYTES = 64 * 1024;
 
-type GuardRunner = (payload: string, signal: AbortSignal) => Promise<string>;
+type GuardRunner = (payload: string, signal: AbortSignal, cwd: string) => Promise<string>;
 
 interface GuardHookResponse {
   continue?: boolean;
@@ -56,7 +56,7 @@ export function createHolGuardPreToolHook(
         cwd: ctx.cwd,
         tool_input: { command },
       });
-      response = parseGuardResponse(await run(payload, ctx.signal));
+      response = parseGuardResponse(await run(payload, ctx.signal, ctx.cwd));
     } catch (error) {
       return { action: "deny", reason: `HOL Guard: ${message(error)}` };
     }
@@ -185,7 +185,7 @@ function parseGuardResponse(raw: string): GuardHookResponse {
   return value as GuardHookResponse;
 }
 
-function runHolGuard(payload: string, signal: AbortSignal): Promise<string> {
+function runHolGuard(payload: string, signal: AbortSignal, cwd: string): Promise<string> {
   return new Promise((resolve, reject) => {
     // Do not spawn after cancellation: an immediate return before attaching the
     // child error listener can otherwise crash the host on ENOENT.
@@ -196,7 +196,7 @@ function runHolGuard(payload: string, signal: AbortSignal): Promise<string> {
     const child = spawn(
       "hol-guard",
       ["hook", "--harness", "claude-code", "--json"],
-      { stdio: ["pipe", "pipe", "pipe"], windowsHide: true },
+      { stdio: ["pipe", "pipe", "pipe"], windowsHide: true, cwd },
     );
 
     let stdout = "";
