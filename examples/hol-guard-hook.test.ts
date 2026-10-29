@@ -30,10 +30,12 @@ describe("HOL Guard PreToolUse example", () => {
       });
     });
 
-    expect(await hook(input(), ctx())).toEqual({ action: "continue" });
+    const runContext = { ...ctx(), cwd: "/tmp/active-worktree" };
+    expect(await hook(input(), runContext)).toEqual({ action: "continue" });
     expect(JSON.parse(received)).toEqual({
       hook_event_name: "PreToolUse",
       tool_name: "Bash",
+      cwd: "/tmp/active-worktree",
       tool_input: { command: "git status" },
     });
   });
