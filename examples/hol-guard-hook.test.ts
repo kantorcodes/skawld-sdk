@@ -255,3 +255,27 @@ describe("HOL Guard PreToolUse example", () => {
   });
 
 });
+
+
+test("denies relative or missing Bash cwd before invoking Guard", async () => {
+  let guardCalls = 0;
+  const hook = createHolGuardPreToolHook(async () => {
+    guardCalls++;
+    return JSON.stringify({
+      policy_action: "allow",
+      reason_code: "native_policy_allow",
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision: "allow",
+      },
+    });
+  });
+
+  for (const cwd of ["", ".", "./project", "relative/worktree"]) {
+    expect(await hook(input(), { ...ctx(), cwd })).toEqual({
+      action: "deny",
+      reason: "HOL Guard: Bash cwd must be an absolute path",
+    });
+  }
+  expect(guardCalls).toBe(0);
+});
