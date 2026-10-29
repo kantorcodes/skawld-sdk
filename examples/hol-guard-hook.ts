@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { isAbsolute } from "node:path";
 import type { PreToolUseHook } from "../src/sdk.js";
 
 const GUARD_TIMEOUT_MS = 9_000;
@@ -39,6 +40,11 @@ export function createHolGuardPreToolHook(
     const command = input.input?.command;
     if (typeof command !== "string" || command.trim() === "") {
       return { action: "deny", reason: "HOL Guard: Bash command is missing" };
+    }
+
+    // An ambiguous or relative cwd could inspect a different project than Bash.
+    if (typeof ctx?.cwd !== "string" || !isAbsolute(ctx.cwd)) {
+      return { action: "deny", reason: "HOL Guard: Bash cwd must be an absolute path" };
     }
 
     let response: GuardHookResponse;
