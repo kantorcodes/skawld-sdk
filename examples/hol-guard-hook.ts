@@ -104,6 +104,41 @@ function safeReason(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+// JSON.parse keeps the last duplicate key; an allow cannot replace a deny.
+function containsDuplicateJsonKeys(raw: string): boolean {
+  const frames: Array<{ isObject: boolean; expectKey: boolean; keys: Set<string> }> = [];
+  for (let i = 0; i < raw.length;) {
+    const char = raw[i];
+    if (char === '"') {
+      const start = i++;
+      while (i < raw.length) {
+        if (raw[i] === "\\") {
+          i += 2;
+          continue;
+        }
+        if (raw[i++] === '"') break;
+      }
+      const frame = frames[frames.length - 1];
+      if (frame?.isObject && frame.expectKey) {
+        // Decode escaped property names before comparing them.
+        const key = JSON.parse(raw.slice(start, i)) as string;
+        if (frame.keys.has(key)) return true;
+        frame.keys.add(key);
+        frame.expectKey = false;
+      }
+      continue;
+    }
+    if (char === "{") frames.push({ isObject: true, expectKey: true, keys: new Set() });
+    else if (char === "[") frames.push({ isObject: false, expectKey: false, keys: new Set() });
+    else if (char === "}" || char === "]") frames.pop();
+    else if (char === "," && frames[frames.length - 1]?.isObject) {
+      frames[frames.length - 1].expectKey = true;
+    }
+    i++;
+  }
+  return false;
+}
+
 function parseGuardResponse(raw: string): GuardHookResponse {
   if (Buffer.byteLength(raw, "utf8") > MAX_GUARD_OUTPUT_BYTES) {
     throw new Error("hook response exceeds 64 KiB");
@@ -113,6 +148,7 @@ function parseGuardResponse(raw: string): GuardHookResponse {
 
   let parsed: unknown;
   try {
+    if (containsDuplicateJsonKeys(text)) throw new Error("duplicate hook verdict key");
     parsed = JSON.parse(text);
   } catch {
     throw new Error("invalid hook JSON");
