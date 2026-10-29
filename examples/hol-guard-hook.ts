@@ -46,6 +46,8 @@ export function createHolGuardPreToolHook(
       const payload = JSON.stringify({
         hook_event_name: "PreToolUse",
         tool_name: "Bash",
+        // Keep path-sensitive Guard inspection in the same directory as Skawld.
+        cwd: ctx.cwd,
         tool_input: { command },
       });
       response = parseGuardResponse(await run(payload, ctx.signal));
