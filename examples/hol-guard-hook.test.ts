@@ -135,6 +135,22 @@ describe("HOL Guard PreToolUse example", () => {
     });
   });
 
+  test("denies duplicate native hook verdict members, including escaped keys", async () => {
+    const contradictory = [
+      '{"policy_action":"block","policy_action":"allow","reason_code":"native_policy_allow","hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}',
+      '{"policy_action":"allow","reason_code":"native_policy_allow","hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecision":"allow"}}',
+      '{"policy_action":"allow","reason_code":"native_policy_allow","hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"},"metadata":{"note":"deny","note":"allow"}}',
+      '{"policy_action":"block","policy_\\u0061ction":"allow","reason_code":"native_policy_allow","hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}',
+    ];
+    for (const output of contradictory) {
+      const hook = createHolGuardPreToolHook(async () => output);
+      expect(await hook(input(), ctx())).toEqual({
+        action: "deny",
+        reason: "HOL Guard: invalid hook JSON",
+      });
+    }
+  });
+
   test("fails closed on malformed or unavailable Guard results", async () => {
     const malformed = createHolGuardPreToolHook(async () => "not json");
     const unavailable = createHolGuardPreToolHook(async () => {
