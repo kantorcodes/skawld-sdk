@@ -279,3 +279,27 @@ test("denies relative or missing Bash cwd before invoking Guard", async () => {
   }
   expect(guardCalls).toBe(0);
 });
+
+test("uses the effective Bash workspace when invoking Guard", async () => {
+  const workspace = "/tmp/active-worktree";
+  let passedCwd = "";
+  let inspectedCwd = "";
+  const hook = createHolGuardPreToolHook(async (payload, _signal, cwd) => {
+    passedCwd = cwd;
+    inspectedCwd = JSON.parse(payload).cwd;
+    return JSON.stringify({
+      policy_action: "allow",
+      reason_code: "native_policy_allow",
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision: "allow",
+      },
+    });
+  });
+
+  expect(await hook(input("git status"), { ...ctx(), cwd: workspace })).toEqual({
+    action: "continue",
+  });
+  expect(passedCwd).toBe(workspace);
+  expect(inspectedCwd).toBe(workspace);
+});
