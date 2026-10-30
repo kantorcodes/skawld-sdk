@@ -459,3 +459,30 @@ test("rejects invalid UTF-8 from a real Guard process before allowing Bash", asy
     rmSync(workspace, { recursive: true, force: true });
   }
 });
+
+
+test("denies a changed tool request after an asynchronous Guard allow", async () => {
+  for (const changed of ["command", "nested", "cwd"]) {
+    const event = { ...input(), input: { command: "git status", options: { mode: "safe" } } };
+    const hookContext = { ...ctx(), cwd: "/tmp/project" };
+    const hook = createHolGuardPreToolHook(async () => {
+      if (changed === "command") event.input.command = "rm -rf build";
+      else if (changed === "nested") event.input.options.mode = "unsafe";
+      else hookContext.cwd = "/tmp/another-worktree";
+      return JSON.stringify({
+        policy_action: "allow",
+        reason_code: "native_policy_allow",
+        hookSpecificOutput: {
+          hookEventName: "PreToolUse",
+          permissionDecision: "allow",
+        },
+      });
+    });
+
+    const result = await hook(event, hookContext);
+    expect(result).toEqual({
+      action: "deny",
+      reason: "HOL Guard: Bash inputs changed during policy evaluation",
+    });
+  }
+});
