@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
-import { realpathSync } from "node:fs";
-import { delimiter, isAbsolute, relative, sep } from "node:path";
+import { existsSync, realpathSync } from "node:fs";
+import { delimiter, dirname, isAbsolute, join, relative, sep } from "node:path";
 import type { PreToolUseHook } from "../src/sdk.js";
 
 const GUARD_TIMEOUT_MS = 9_000;
@@ -201,11 +201,25 @@ function isWithinWorktree(candidate: string, root: string): boolean {
  * Resolve symlinks and exclude those directories before starting Guard.
  * An absent or unresolvable directory cannot supply a trusted Guard binary.
  */
+function enclosingGitWorktreeRoot(cwd: string): string {
+  const start = realpathSync(cwd);
+  let current = start;
+  let outermost = start;
+  for (;;) {
+    // The nearest .git marker may be a project-controlled nested fake.
+    // A linked worktree also uses a .git file, so recognize either form.
+    if (existsSync(join(current, ".git"))) outermost = current;
+    const parent = dirname(current);
+    if (parent === current) return outermost;
+    current = parent;
+  }
+}
+
 export function guardSpawnEnv(source: NodeJS.ProcessEnv, cwd?: string): NodeJS.ProcessEnv {
   let worktree: string | undefined;
   if (cwd !== undefined) {
     if (!isAbsolute(cwd)) throw new Error("hol-guard requires an absolute worktree directory");
-    worktree = realpathSync(cwd);
+    worktree = enclosingGitWorktreeRoot(cwd);
   }
   const key = Object.keys(source).find((name) => name.toUpperCase() === "PATH");
   const absolutePath = (key ? source[key] ?? "" : "")
