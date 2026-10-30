@@ -486,3 +486,37 @@ test("denies a changed tool request after an asynchronous Guard allow", async ()
     });
   }
 });
+
+
+test("launcher-checkout PATH cannot impersonate Guard for another Bash worktree", () => {
+  const launcher = mkdtempSync(join(tmpdir(), "skawld-guard-launch-"));
+  const target = mkdtempSync(join(tmpdir(), "skawld-guard-bash-"));
+  const trusted = mkdtempSync(join(tmpdir(), "skawld-guard-external-"));
+  const originalCwd = process.cwd();
+  try {
+    mkdirSync(join(launcher, ".git"));
+    mkdirSync(join(target, ".git"));
+    const launcherBin = join(launcher, ".bin");
+    const targetBin = join(target, ".bin");
+    mkdirSync(launcherBin);
+    mkdirSync(targetBin);
+    const entries = [launcherBin, targetBin];
+    if (process.platform !== "win32") {
+      // A project-owned directory alias cannot launder the external bin.
+      const launcherAlias = join(launcher, "alias-to-trusted");
+      symlinkSync(trusted, launcherAlias, "dir");
+      entries.push(launcherAlias);
+    }
+    entries.push(trusted);
+    process.chdir(launcher);
+    const env = guardSpawnEnv({ PATH: entries.join(delimiter) }, target);
+    expect(env.PATH).toBe(realpathSync(trusted));
+    expect(() => guardSpawnEnv({ PATH: launcherBin }, target))
+      .toThrow("hol-guard requires an absolute executable PATH");
+  } finally {
+    process.chdir(originalCwd);
+    rmSync(launcher, { recursive: true, force: true });
+    rmSync(target, { recursive: true, force: true });
+    rmSync(trusted, { recursive: true, force: true });
+  }
+});
