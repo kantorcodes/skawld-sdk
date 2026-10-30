@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { isAbsolute } from "node:path";
+import { delimiter, isAbsolute } from "node:path";
 import type { PreToolUseHook } from "../src/sdk.js";
 
 const GUARD_TIMEOUT_MS = 9_000;
@@ -185,6 +185,26 @@ function parseGuardResponse(raw: string): GuardHookResponse {
   return value as GuardHookResponse;
 }
 
+/**
+ * Drop relative or empty PATH entries before changing into an agent worktree.
+ * Otherwise a project-local executable could replace the intended Guard CLI.
+ * Never fall back to the OS default search path when filtering removes all dirs.
+ */
+export function guardSpawnEnv(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const key = Object.keys(source).find((name) => name.toUpperCase() === "PATH");
+  const absolutePath = (key ? source[key] ?? "" : "")
+    .split(delimiter)
+    .filter((entry) => entry.length > 0 && isAbsolute(entry))
+    .join(delimiter);
+  if (!absolutePath) throw new Error("hol-guard requires an absolute executable PATH");
+  const sanitized = { ...source };
+  for (const name of Object.keys(sanitized)) {
+    if (name.toUpperCase() === "PATH") delete sanitized[name];
+  }
+  sanitized.PATH = absolutePath;
+  return sanitized;
+}
+
 function runHolGuard(payload: string, signal: AbortSignal, cwd: string): Promise<string> {
   return new Promise((resolve, reject) => {
     // Do not spawn after cancellation: an immediate return before attaching the
@@ -193,10 +213,17 @@ function runHolGuard(payload: string, signal: AbortSignal, cwd: string): Promise
       reject(new Error("hook request aborted"));
       return;
     }
+    let env: NodeJS.ProcessEnv;
+    try {
+      env = guardSpawnEnv(process.env);
+    } catch (error) {
+      reject(error);
+      return;
+    }
     const child = spawn(
       "hol-guard",
       ["hook", "--harness", "claude-code", "--json"],
-      { stdio: ["pipe", "pipe", "pipe"], windowsHide: true, cwd },
+      { stdio: ["pipe", "pipe", "pipe"], windowsHide: true, cwd, env },
     );
 
     let stdout = "";
