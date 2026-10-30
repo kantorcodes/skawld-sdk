@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
+import { TextDecoder } from "node:util";
 import { delimiter, dirname, isAbsolute, join, relative, sep } from "node:path";
 import type { PreToolUseHook } from "../src/sdk.js";
 
@@ -275,8 +276,10 @@ function runHolGuard(payload: string, signal: AbortSignal, cwd: string): Promise
       { stdio: ["pipe", "pipe", "pipe"], windowsHide: true, cwd, env },
     );
 
-    let stdout = "";
-    let stderr = "";
+    const stdoutChunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
+    let stdoutBytes = 0;
+    let stderrBytes = 0;
     let settled = false;
 
     const cleanup = () => {
@@ -310,24 +313,37 @@ function runHolGuard(payload: string, signal: AbortSignal, cwd: string): Promise
     // that races with spawn. An ENOENT error can otherwise escape unhandled.
     child.stdout!.on("data", (chunk: Buffer) => {
       if (settled) return;
-      stdout += chunk.toString("utf8");
-      if (Buffer.byteLength(stdout, "utf8") > MAX_GUARD_OUTPUT_BYTES) {
+      // Buffer raw bytes until close: per-chunk decoding can silently replace
+      // malformed UTF-8 inside an otherwise allow-shaped native verdict.
+      stdoutChunks.push(chunk);
+      stdoutBytes += chunk.length;
+      if (stdoutBytes > MAX_GUARD_OUTPUT_BYTES) {
         stop("hook stdout exceeds 64 KiB");
       }
     });
     child.stderr!.on("data", (chunk: Buffer) => {
       if (settled) return;
-      stderr += chunk.toString("utf8");
-      if (Buffer.byteLength(stderr, "utf8") > MAX_GUARD_OUTPUT_BYTES) {
+      stderrChunks.push(chunk);
+      stderrBytes += chunk.length;
+      if (stderrBytes > MAX_GUARD_OUTPUT_BYTES) {
         stop("hook stderr exceeds 64 KiB");
       }
     });
     child.once("error", (error) => fail(error));
     child.once("close", (code) => {
+      if (settled) return;
       if (code === 0) {
+        let stdout: string;
+        try {
+          stdout = new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(stdoutChunks));
+        } catch {
+          fail(new Error("hook stdout is not valid UTF-8"));
+          return;
+        }
         finish(stdout);
         return;
       }
+      const stderr = Buffer.concat(stderrChunks).toString("utf8");
       fail(new Error(stderr.trim() || `hook process exited with code ${code ?? "unknown"}`));
     });
     child.stdin!.on("error", (error) => fail(error));
