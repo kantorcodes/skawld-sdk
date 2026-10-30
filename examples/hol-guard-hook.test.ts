@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { createHolGuardPreToolHook } from "./hol-guard-hook.js";
+import { delimiter, resolve } from "node:path";
+import { createHolGuardPreToolHook, guardSpawnEnv } from "./hol-guard-hook.js";
 
 const ctx = () => ({
   session_id: "session-1",
@@ -13,6 +14,24 @@ const input = (command = "git status") => ({
   tool_use_id: "tool-1",
   input: { command },
   summary: `Bash: ${command}`,
+});
+
+test("Guard executable PATH cannot be redirected by changing into a project cwd", () => {
+  const knownAbsoluteDir = resolve("guard-bin");
+  const env = guardSpawnEnv({
+    PATH: [".", "./bin", knownAbsoluteDir, "node_modules/.bin"].join(delimiter),
+    OTHER: "keep",
+  });
+  expect(env.PATH).toBe(knownAbsoluteDir);
+  expect(env.OTHER).toBe("keep");
+  expect(() => guardSpawnEnv({ PATH: ["bin", ".", ""].join(delimiter) }))
+    .toThrow("hol-guard requires an absolute executable PATH");
+  expect(() => guardSpawnEnv({ OTHER: "no-path" }))
+    .toThrow("hol-guard requires an absolute executable PATH");
+  // Windows can have a mixed-case Path key; the subprocess receives one canonical PATH.
+  const mixedCase = guardSpawnEnv({ Path: knownAbsoluteDir });
+  expect(mixedCase.PATH).toBe(knownAbsoluteDir);
+  expect(Object.keys(mixedCase).filter((key) => key.toUpperCase() === "PATH")).toEqual(["PATH"]);
 });
 
 describe("HOL Guard PreToolUse example", () => {
