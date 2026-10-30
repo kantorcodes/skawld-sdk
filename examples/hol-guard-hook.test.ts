@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join, resolve } from "node:path";
 import { createHolGuardPreToolHook, guardSpawnEnv } from "./hol-guard-hook.js";
@@ -396,4 +396,24 @@ test("uses the effective Bash workspace when invoking Guard", async () => {
   });
   expect(passedCwd).toBe(workspace);
   expect(inspectedCwd).toBe(workspace);
+});
+
+test("project-owned alias to a trusted external directory is excluded from Guard PATH", () => {
+  const project = mkdtempSync(join(tmpdir(), "skawld-untrusted-alias-"));
+  const trusted = mkdtempSync(join(tmpdir(), "skawld-trusted-guard-"));
+  const outside = mkdtempSync(join(tmpdir(), "skawld-outside-alias-"));
+  try {
+    const projectAlias = join(project, "linked-external-bin");
+    const outsideAlias = join(outside, "linked-trusted-bin");
+    symlinkSync(trusted, projectAlias, "dir");
+    symlinkSync(trusted, outsideAlias, "dir");
+    const env = guardSpawnEnv({ PATH: [projectAlias, outsideAlias].join(delimiter) }, project);
+    // Do not run a project-controlled symlink, even while it points outside.
+    // A trusted external alias is canonicalized before the child is spawned.
+    expect(env.PATH).toBe(realpathSync(trusted));
+  } finally {
+    rmSync(project, { recursive: true, force: true });
+    rmSync(trusted, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
+  }
 });
