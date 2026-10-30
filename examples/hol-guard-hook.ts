@@ -257,11 +257,8 @@ function runHolGuard(payload: string, signal: AbortSignal, cwd: string): Promise
     );
 
     timer.unref?.();
-    if (signal.aborted) {
-      onAbort();
-      return;
-    }
-    signal.addEventListener("abort", onAbort, { once: true });
+    // Attach every child error/stream listener before checking for a cancellation
+    // that races with spawn. An ENOENT error can otherwise escape unhandled.
     child.stdout!.on("data", (chunk: Buffer) => {
       if (settled) return;
       stdout += chunk.toString("utf8");
@@ -285,6 +282,11 @@ function runHolGuard(payload: string, signal: AbortSignal, cwd: string): Promise
       fail(new Error(stderr.trim() || `hook process exited with code ${code ?? "unknown"}`));
     });
     child.stdin!.on("error", (error) => fail(error));
+    signal.addEventListener("abort", onAbort, { once: true });
+    if (signal.aborted) {
+      onAbort();
+      return;
+    }
     child.stdin!.end(payload);
   });
 }
