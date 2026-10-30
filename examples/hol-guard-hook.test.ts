@@ -292,6 +292,7 @@ describe("HOL Guard PreToolUse example", () => {
     // Simulate cancellation after the first aborted check while spawn is
     // about to report ENOENT. The error event must have a listener attached.
     const emptyBin = mkdtempSync(join(tmpdir(), "skawld-guard-empty-bin-"));
+    const workingDir = mkdtempSync(join(tmpdir(), "skawld-guard-worktree-"));
     const originalPath = process.env.PATH;
     try {
       process.env.PATH = emptyBin;
@@ -302,7 +303,7 @@ describe("HOL Guard PreToolUse example", () => {
         removeEventListener() {},
       } as unknown as AbortSignal;
       const hook = createHolGuardPreToolHook();
-      expect(await hook(input(), { ...ctx(), signal })).toEqual({
+      expect(await hook(input(), { ...ctx(), cwd: workingDir, signal })).toEqual({
         action: "deny",
         reason: "HOL Guard: hook request aborted",
       });
@@ -312,6 +313,7 @@ describe("HOL Guard PreToolUse example", () => {
       if (originalPath === undefined) delete process.env.PATH;
       else process.env.PATH = originalPath;
       rmSync(emptyBin, { recursive: true, force: true });
+      rmSync(workingDir, { recursive: true, force: true });
     }
   });
 
