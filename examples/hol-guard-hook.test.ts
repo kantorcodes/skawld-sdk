@@ -399,6 +399,8 @@ test("uses the effective Bash workspace when invoking Guard", async () => {
 });
 
 test("project-owned alias to a trusted external directory is excluded from Guard PATH", () => {
+  // Directory symlinks require special privileges on some Windows CI hosts.
+  if (process.platform === "win32") return;
   const project = mkdtempSync(join(tmpdir(), "skawld-untrusted-alias-"));
   const trusted = mkdtempSync(join(tmpdir(), "skawld-trusted-guard-"));
   const outside = mkdtempSync(join(tmpdir(), "skawld-outside-alias-"));
