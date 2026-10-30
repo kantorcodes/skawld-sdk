@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join, resolve } from "node:path";
 import { createHolGuardPreToolHook, guardSpawnEnv } from "./hol-guard-hook.js";
@@ -34,6 +34,30 @@ test("Guard executable PATH cannot be redirected by changing into a project cwd"
   const mixedCase = guardSpawnEnv({ Path: knownAbsoluteDir });
   expect(mixedCase.PATH).toBe(knownAbsoluteDir);
   expect(Object.keys(mixedCase).filter((key) => key.toUpperCase() === "PATH")).toEqual(["PATH"]);
+});
+
+test("absolute project PATH entries and symlinks cannot impersonate Guard", () => {
+  const project = mkdtempSync(join(tmpdir(), "skawld-untrusted-worktree-"));
+  const trusted = mkdtempSync(join(tmpdir(), "skawld-trusted-guard-bin-"));
+  try {
+    const projectBin = join(project, "node_modules", ".bin");
+    mkdirSync(projectBin, { recursive: true });
+    const entries = [projectBin];
+    // An absolute symlink outside the worktree must be checked by real path.
+    if (process.platform !== "win32") {
+      const alias = join(trusted, "linked-worktree-bin");
+      symlinkSync(projectBin, alias, "dir");
+      entries.push(alias);
+    }
+    entries.push(trusted);
+    const sanitized = guardSpawnEnv({ PATH: entries.join(delimiter) }, project);
+    expect(sanitized.PATH).toBe(trusted);
+    expect(() => guardSpawnEnv({ PATH: projectBin }, project))
+      .toThrow("hol-guard requires an absolute executable PATH");
+  } finally {
+    rmSync(project, { recursive: true, force: true });
+    rmSync(trusted, { recursive: true, force: true });
+  }
 });
 
 describe("HOL Guard PreToolUse example", () => {
