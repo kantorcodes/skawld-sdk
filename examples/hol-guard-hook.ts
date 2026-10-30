@@ -230,15 +230,20 @@ export function guardSpawnEnv(source: NodeJS.ProcessEnv, cwd?: string): NodeJS.P
   const key = Object.keys(source).find((name) => name.toUpperCase() === "PATH");
   const absolutePath = (key ? source[key] ?? "" : "")
     .split(delimiter)
-    .filter((entry) => {
-      if (!entry || !isAbsolute(entry)) return false;
-      if (!worktree) return true;
+    .map((entry): string | null => {
+      if (!entry || !isAbsolute(entry)) return null;
+      if (!worktree) return entry;
       try {
-        return !isWithinWorktree(realpathSync(entry), worktree);
+        // Reject aliases owned by the worktree even if they currently point
+        // outside it. Pass canonical paths to spawn to avoid symlink rebinding.
+        if (isWithinWorktree(entry, worktree)) return null;
+        const canonical = realpathSync(entry);
+        return isWithinWorktree(canonical, worktree) ? null : canonical;
       } catch {
-        return false;
+        return null;
       }
     })
+    .filter((entry): entry is string => entry !== null)
     .join(delimiter);
   if (!absolutePath) throw new Error("hol-guard requires an absolute executable PATH");
   const sanitized = { ...source };
