@@ -35,7 +35,13 @@ export function createHolGuardPreToolHook(
   run: GuardRunner = runHolGuard,
 ): PreToolUseHook {
   return async (input, ctx) => {
-    if (input.tool_name !== "Bash") return;
+    // If the event loses its tool identity, it may still represent a Bash call.
+    // Never abstain or throw before the protected-tool check can run.
+    const toolName = input?.tool_name;
+    if (typeof toolName !== "string" || !toolName.trim()) {
+      return { action: "deny", reason: "HOL Guard: tool identity is missing" };
+    }
+    if (toolName !== "Bash") return;
 
     // Even a malformed Bash envelope must deny rather than throw from the hook.
     const command = input.input?.command;
