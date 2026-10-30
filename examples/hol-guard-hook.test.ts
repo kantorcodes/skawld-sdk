@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { delimiter, resolve } from "node:path";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { delimiter, join, resolve } from "node:path";
 import { createHolGuardPreToolHook, guardSpawnEnv } from "./hol-guard-hook.js";
 
 const ctx = () => ({
@@ -262,6 +264,33 @@ describe("HOL Guard PreToolUse example", () => {
       reason: "HOL Guard: Bash command is missing",
     });
   });
+  test("handles an abort between launch and child listener registration", async () => {
+    // Simulate cancellation after the first aborted check while spawn is
+    // about to report ENOENT. The error event must have a listener attached.
+    const emptyBin = mkdtempSync(join(tmpdir(), "skawld-guard-empty-bin-"));
+    const originalPath = process.env.PATH;
+    try {
+      process.env.PATH = emptyBin;
+      let abortedReads = 0;
+      const signal = {
+        get aborted() { return ++abortedReads > 1; },
+        addEventListener() {},
+        removeEventListener() {},
+      } as unknown as AbortSignal;
+      const hook = createHolGuardPreToolHook();
+      expect(await hook(input(), { ...ctx(), signal })).toEqual({
+        action: "deny",
+        reason: "HOL Guard: hook request aborted",
+      });
+      // Let the failed spawn emit its error, which previously escaped unhandled.
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    } finally {
+      if (originalPath === undefined) delete process.env.PATH;
+      else process.env.PATH = originalPath;
+      rmSync(emptyBin, { recursive: true, force: true });
+    }
+  });
+
   test("denies an already-aborted request before launching Guard", async () => {
     const controller = new AbortController();
     controller.abort();
