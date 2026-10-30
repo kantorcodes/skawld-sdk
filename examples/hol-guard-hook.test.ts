@@ -261,6 +261,26 @@ describe("HOL Guard PreToolUse example", () => {
     });
   });
 
+  test("denies missing or malformed tool identity before running Guard", async () => {
+    const hook = createHolGuardPreToolHook(async () => {
+      throw new Error("Guard must not run without a tool identity");
+    });
+    const malformed = [
+      undefined,
+      null,
+      {},
+      { tool_name: null },
+      { tool_name: "" },
+      { tool_name: 42 },
+    ];
+    for (const event of malformed) {
+      expect(await hook(event as unknown as Parameters<typeof hook>[0], ctx())).toEqual({
+        action: "deny",
+        reason: "HOL Guard: tool identity is missing",
+      });
+    }
+  });
+
   test("denies a malformed Bash envelope instead of throwing", async () => {
     const hook = createHolGuardPreToolHook(async () => {
       throw new Error("Guard must not run for missing input");
