@@ -250,23 +250,27 @@ function enclosingGitWorktreeRoot(cwd: string): string {
 }
 
 export function guardSpawnEnv(source: NodeJS.ProcessEnv, cwd?: string): NodeJS.ProcessEnv {
-  let worktree: string | undefined;
+  const worktrees: string[] = [];
   if (cwd !== undefined) {
     if (!isAbsolute(cwd)) throw new Error("hol-guard requires an absolute worktree directory");
-    worktree = enclosingGitWorktreeRoot(cwd);
+    // PATH is selected in the worker's launch process, which may be a
+    // different repository than the requested Bash tool directory.
+    // Neither checkout may provide a forged Guard executable or symlink.
+    worktrees.push(enclosingGitWorktreeRoot(cwd));
+    worktrees.push(enclosingGitWorktreeRoot(process.cwd()));
   }
   const key = Object.keys(source).find((name) => name.toUpperCase() === "PATH");
   const absolutePath = (key ? source[key] ?? "" : "")
     .split(delimiter)
     .map((entry): string | null => {
       if (!entry || !isAbsolute(entry)) return null;
-      if (!worktree) return entry;
+      if (worktrees.length === 0) return entry;
       try {
-        // Reject aliases owned by the worktree even if they currently point
-        // outside it. Pass canonical paths to spawn to avoid symlink rebinding.
-        if (isWithinWorktree(entry, worktree)) return null;
+        // Check the alias and the canonical target against both worktrees.
+        // Spawn only from canonical directories to prevent symlink rebinding.
+        if (worktrees.some((root) => isWithinWorktree(entry, root))) return null;
         const canonical = realpathSync(entry);
-        return isWithinWorktree(canonical, worktree) ? null : canonical;
+        return worktrees.some((root) => isWithinWorktree(canonical, root)) ? null : canonical;
       } catch {
         return null;
       }
