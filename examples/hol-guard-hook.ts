@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
-import { delimiter, isAbsolute } from "node:path";
+import { realpathSync } from "node:fs";
+import { delimiter, isAbsolute, relative, sep } from "node:path";
 import type { PreToolUseHook } from "../src/sdk.js";
 
 const GUARD_TIMEOUT_MS = 9_000;
@@ -190,11 +191,34 @@ function parseGuardResponse(raw: string): GuardHookResponse {
  * Otherwise a project-local executable could replace the intended Guard CLI.
  * Never fall back to the OS default search path when filtering removes all dirs.
  */
-export function guardSpawnEnv(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+function isWithinWorktree(candidate: string, root: string): boolean {
+  const rel = relative(root, candidate);
+  return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
+}
+
+/**
+ * The worktree may contain executable shims in absolute PATH directories.
+ * Resolve symlinks and exclude those directories before starting Guard.
+ * An absent or unresolvable directory cannot supply a trusted Guard binary.
+ */
+export function guardSpawnEnv(source: NodeJS.ProcessEnv, cwd?: string): NodeJS.ProcessEnv {
+  let worktree: string | undefined;
+  if (cwd !== undefined) {
+    if (!isAbsolute(cwd)) throw new Error("hol-guard requires an absolute worktree directory");
+    worktree = realpathSync(cwd);
+  }
   const key = Object.keys(source).find((name) => name.toUpperCase() === "PATH");
   const absolutePath = (key ? source[key] ?? "" : "")
     .split(delimiter)
-    .filter((entry) => entry.length > 0 && isAbsolute(entry))
+    .filter((entry) => {
+      if (!entry || !isAbsolute(entry)) return false;
+      if (!worktree) return true;
+      try {
+        return !isWithinWorktree(realpathSync(entry), worktree);
+      } catch {
+        return false;
+      }
+    })
     .join(delimiter);
   if (!absolutePath) throw new Error("hol-guard requires an absolute executable PATH");
   const sanitized = { ...source };
@@ -215,7 +239,7 @@ function runHolGuard(payload: string, signal: AbortSignal, cwd: string): Promise
     }
     let env: NodeJS.ProcessEnv;
     try {
-      env = guardSpawnEnv(process.env);
+      env = guardSpawnEnv(process.env, cwd);
     } catch (error) {
       reject(error);
       return;
