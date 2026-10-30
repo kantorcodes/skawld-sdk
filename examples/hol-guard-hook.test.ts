@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join, resolve } from "node:path";
 import { createHolGuardPreToolHook, guardSpawnEnv } from "./hol-guard-hook.js";
@@ -417,5 +417,45 @@ test("project-owned alias to a trusted external directory is excluded from Guard
     rmSync(project, { recursive: true, force: true });
     rmSync(trusted, { recursive: true, force: true });
     rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+
+test("rejects invalid UTF-8 from a real Guard process before allowing Bash", async () => {
+  if (process.platform === "win32") return;
+  const workspace = mkdtempSync(join(tmpdir(), "skawld-guard-utf8-project-"));
+  const trustedBin = mkdtempSync(join(tmpdir(), "skawld-guard-utf8-bin-"));
+  const binary = join(trustedBin, "hol-guard");
+  const allowed = JSON.stringify({
+    policy_action: "allow",
+    reason_code: "native_policy_allow",
+    hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "allow" },
+    diagnostic: "ok",
+  });
+  const index = allowed.lastIndexOf("ok");
+  const shell = [
+    "#!/bin/sh",
+    `printf '%s' '${allowed.slice(0, index)}'`,
+    "printf '\\377'",
+    `printf '%s' '${allowed.slice(index + 2)}'`,
+  ].join("\n") + "\n";
+  writeFileSync(binary, shell);
+  chmodSync(binary, 0o755);
+  const priorPath = process.env.PATH;
+  try {
+    process.env.PATH = [trustedBin, priorPath ?? ""].join(delimiter);
+    const verdict = await createHolGuardPreToolHook()(
+      input(),
+      { ...ctx(), cwd: workspace },
+    );
+    expect(verdict).toEqual({
+      action: "deny",
+      reason: "HOL Guard: hook stdout is not valid UTF-8",
+    });
+  } finally {
+    if (priorPath === undefined) delete process.env.PATH;
+    else process.env.PATH = priorPath;
+    rmSync(trustedBin, { recursive: true, force: true });
+    rmSync(workspace, { recursive: true, force: true });
   }
 });
