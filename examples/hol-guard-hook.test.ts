@@ -60,6 +60,29 @@ test("absolute project PATH entries and symlinks cannot impersonate Guard", () =
   }
 });
 
+test("rejects PATH executable symlinks into an untrusted worktree", () => {
+  if (process.platform === "win32") return;
+  const project = mkdtempSync(join(tmpdir(), "skawld-executable-symlink-project-"));
+  const externalBin = mkdtempSync(join(tmpdir(), "skawld-executable-symlink-bin-"));
+  try {
+    mkdirSync(join(project, ".git"));
+    const projectBinary = join(project, "hol-guard");
+    writeFileSync(projectBinary, "#!/bin/sh\\nexit 0\\n");
+    chmodSync(projectBinary, 0o755);
+    symlinkSync(projectBinary, join(externalBin, "hol-guard"));
+    expect(() => guardSpawnEnv({ PATH: externalBin }, project))
+      .toThrow("hol-guard requires an absolute executable PATH");
+    rmSync(join(externalBin, "hol-guard"));
+    writeFileSync(join(externalBin, "hol-guard"), "#!/bin/sh\\nexit 0\\n");
+    chmodSync(join(externalBin, "hol-guard"), 0o755);
+    expect(guardSpawnEnv({ PATH: externalBin }, project).PATH)
+      .toBe(realpathSync(externalBin));
+  } finally {
+    rmSync(project, { recursive: true, force: true });
+    rmSync(externalBin, { recursive: true, force: true });
+  }
+});
+
 describe("HOL Guard PreToolUse example", () => {
   test("continues only on an authoritative allow", async () => {
     let received = "";
