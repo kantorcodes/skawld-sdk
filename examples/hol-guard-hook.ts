@@ -270,7 +270,24 @@ export function guardSpawnEnv(source: NodeJS.ProcessEnv, cwd?: string): NodeJS.P
         // Spawn only from canonical directories to prevent symlink rebinding.
         if (worktrees.some((root) => isWithinWorktree(entry, root))) return null;
         const canonical = realpathSync(entry);
-        return worktrees.some((root) => isWithinWorktree(canonical, root)) ? null : canonical;
+        if (worktrees.some((root) => isWithinWorktree(canonical, root))) return null;
+        // Even an external PATH directory may contain a hol-guard executable
+        // symlinked back into an untrusted project checkout.
+        const executableNames = process.platform === "win32"
+          ? ["hol-guard.exe", "hol-guard.cmd", "hol-guard.bat", "hol-guard"]
+          : ["hol-guard"];
+        for (const executableName of executableNames) {
+          const candidate = join(canonical, executableName);
+          try {
+            const executable = realpathSync(candidate);
+            if (worktrees.some((root) =>
+              isWithinWorktree(candidate, root) || isWithinWorktree(executable, root)
+            )) return null;
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== "ENOENT") return null;
+          }
+        }
+        return canonical;
       } catch {
         return null;
       }
