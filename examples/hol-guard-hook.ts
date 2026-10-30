@@ -55,6 +55,18 @@ export function createHolGuardPreToolHook(
       return { action: "deny", reason: "HOL Guard: Bash cwd must be an absolute path" };
     }
 
+    // Freeze the complete tool request before yielding to an async Guard call.
+    // A later callback must not swap an inspected benign Bash command for an
+    // uninspected command or modify another execution argument.
+    let originalInput: string;
+    try {
+      originalInput = JSON.stringify(input.input);
+      if (typeof originalInput !== "string") throw new Error("invalid Bash arguments");
+    } catch {
+      return { action: "deny", reason: "HOL Guard: Bash arguments cannot be inspected" };
+    }
+    const originalCwd = ctx.cwd;
+
     let response: GuardHookResponse;
     try {
       const payload = JSON.stringify({
@@ -67,6 +79,21 @@ export function createHolGuardPreToolHook(
       response = parseGuardResponse(await run(payload, ctx.signal, ctx.cwd));
     } catch (error) {
       return { action: "deny", reason: `HOL Guard: ${message(error)}` };
+    }
+
+    // The hook runner can await a subprocess while a caller still holds
+    // mutable references to the tool input and execution context.
+    try {
+      if (
+        input.tool_name !== toolName ||
+        JSON.stringify(input.input) !== originalInput ||
+        ctx.cwd !== originalCwd ||
+        ctx.signal?.aborted
+      ) {
+        return { action: "deny", reason: "HOL Guard: Bash inputs changed during policy evaluation" };
+      }
+    } catch {
+      return { action: "deny", reason: "HOL Guard: Bash inputs changed during policy evaluation" };
     }
 
     const decision = response.hookSpecificOutput.permissionDecision;
